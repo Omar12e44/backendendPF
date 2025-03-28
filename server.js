@@ -172,7 +172,227 @@ app.post("/verify-otp", async (req, res) => {
   }
 });
 
+
+
+app.get("/profile", async (req, res) => {
+  const token = req.headers.authorization?.split(" ")[1]; // Obtener el token del encabezado Authorization
+
+  if (!token) {
+    return res.status(401).json({ error: "Token no proporcionado" });
+  }
+
+  try {
+    // Verificar el token JWT
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const email = decoded.email;
+
+    // Buscar al usuario en Firestore
+    const userDoc = await db.collection("users").doc(email).get();
+    if (!userDoc.exists) {
+      return res.status(404).json({ error: "Usuario no encontrado" });
+    }
+
+    const user = userDoc.data();
+
+    // Devolver la información del perfil
+    res.json({
+      email: user.email,
+      name: user.name,
+      phone: user.phone,
+      address: user.address,
+      about: user.about,
+      experience: user.experience,
+      positionsOffered: user.positionsOffered,
+      skills: user.skills,
+      aptitudes: user.aptitudes,
+    });
+  } catch (error) {
+    console.error("Error al obtener el perfil:", error);
+    res.status(500).json({ error: "Error al obtener el perfil" });
+  }
+});
+
+
+app.put("/profile_update", async (req, res) => {
+  const token = req.headers.authorization?.split(" ")[1]; // Obtener el token del encabezado Authorization
+
+  if (!token) {
+    return res.status(401).json({ error: "Token no proporcionado" });
+  }
+
+  try {
+    // Verificar el token JWT
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const email = decoded.email;
+
+    // Obtener los datos del cuerpo de la solicitud
+    const { name, phone, address, about, experience, positionsOffered, skills, aptitudes } = req.body;
+
+    // Construir el objeto de actualización
+    const updates = {};
+    if (name) updates.name = name;
+    if (phone) updates.phone = phone;
+    if (address) updates.address = address;
+    if (about) updates.about = about;
+    if (experience) updates.experience = experience;
+    if (positionsOffered) updates.positionsOffered = positionsOffered;
+    if (skills) updates.skills = skills;
+    if (aptitudes) updates.aptitudes = aptitudes;
+
+    // Actualizar el documento del usuario en Firestore
+    await db.collection("users").doc(email).update(updates);
+
+    res.json({ message: "Perfil actualizado correctamente" });
+  } catch (error) {
+    console.error("Error al actualizar el perfil:", error);
+    res.status(500).json({ error: "Error al actualizar el perfil" });
+  }
+});
+
+app.get("/categories", async (req, res) => {
+  try {
+    // Obtener todas las categorías de la colección "categories"
+    const categoriesSnapshot = await db.collection("categories").get();
+
+    // Mapear los documentos a un array de objetos
+    const categories = categoriesSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    // Enviar las categorías como respuesta
+    res.status(200).json(categories);
+  } catch (error) {
+    console.error("Error al obtener las categorías:", error);
+    res.status(500).json({ error: "Error al obtener las categorías." });
+  }
+});
+
+app.post("/job-offers", async (req, res) => {
+  const token = req.headers.authorization?.split(" ")[1]; // Obtener el token del encabezado Authorization
+
+  if (!token) {
+    return res.status(401).json({ error: "Token no proporcionado" });
+  }
+
+  try {
+    // Verificar el token JWT
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const email = decoded.email;
+
+    // Obtener los datos del cuerpo de la solicitud
+    const { title, description, categoryId } = req.body;
+
+    if (!title || !description || !categoryId) {
+      return res.status(400).json({ error: "Todos los campos son obligatorios." });
+    }
+
+    // Crear la oferta de trabajo
+    const jobOffer = {
+      title,
+      description,
+      categoryId,
+      userEmail: email, // Asociar la oferta al usuario autenticado
+      createdAt: new Date().toISOString(),
+    };
+
+    // Guardar la oferta en Firestore
+    const jobOfferRef = await db.collection("jobOffers").add(jobOffer);
+
+    res.status(201).json({ message: "Oferta de trabajo creada correctamente.", id: jobOfferRef.id });
+  } catch (error) {
+    console.error("Error al crear la oferta de trabajo:", error);
+    res.status(500).json({ error: "Error al crear la oferta de trabajo." });
+  }
+});
+
+app.post("/categories", async (req, res) => {
+  const { categories } = req.body; // Recibir un array de categorías desde el cuerpo de la solicitud
+
+  if (!Array.isArray(categories) || categories.length === 0) {
+    return res.status(400).json({ error: "Debes proporcionar un array de categorías." });
+  }
+
+  try {
+    const batch = db.batch(); // Crear una operación en lote para Firestore
+
+    categories.forEach((category) => {
+      const docRef = db.collection("categories").doc(); // Crear un nuevo documento para cada categoría
+      batch.set(docRef, { name: category }); // Agregar el nombre de la categoría
+    });
+
+    await batch.commit(); // Ejecutar la operación en lote
+
+    res.status(201).json({ message: "Categorías agregadas correctamente." });
+  } catch (error) {
+    console.error("Error al agregar categorías:", error);
+    res.status(500).json({ error: "Error al agregar categorías." });
+  }
+});
+
+
+         {/* Mostrar el nombre de la categoría */}
+         app.get("/job-offers", async (req, res) => {
+          try {
+            // Obtener todas las categorías
+            const categoriesSnapshot = await db.collection("categories").get();
+            const categories = categoriesSnapshot.docs.map((doc) => ({
+              id: doc.id,
+              name: doc.data().name,
+            }));
+        
+            // Crear un mapa de categorías para acceso rápido
+            const categoryMap = categories.reduce((map, category) => {
+              map[category.id] = category.name;
+              return map;
+            }, {});
+        
+            // Obtener todas las ofertas de trabajo
+            const jobOffersSnapshot = await db.collection("jobOffers").get();
+            const jobOffers = jobOffersSnapshot.docs.map((doc) => ({
+              id: doc.id,
+              ...doc.data(),
+            }));
+        
+            // Obtener información de los usuarios que crearon las ofertas
+            const userIds = [...new Set(jobOffers.map((offer) => offer.userEmail))]; // Obtener correos únicos
+            const userDocs = await Promise.all(
+              userIds.map(async (email) => {
+                const userDoc = await db.collection("users").doc(email).get();
+                return userDoc.exists ? { email, ...userDoc.data() } : null;
+              })
+            );
+        
+            // Crear un mapa de usuarios para acceso rápido
+            const userMap = userDocs.reduce((map, user) => {
+              if (user) {
+                map[user.email] = user;
+              }
+              return map;
+            }, {});
+        
+            // Combinar las ofertas con la información de categorías y usuarios
+            const enrichedJobOffers = jobOffers.map((offer) => ({
+              id: offer.id,
+              title: offer.title,
+              description: offer.description,
+              userEmail: offer.userEmail,
+              createdAt: offer.createdAt,
+              categoryId: offer.categoryId,
+              categoryName: categoryMap[offer.categoryId] || "Categoría desconocida",
+              creator: userMap[offer.userEmail] || { name: "Usuario desconocido", email: offer.userEmail },
+            }));
+        
+            res.json(enrichedJobOffers); // Enviar las ofertas enriquecidas
+          } catch (error) {
+            console.error("Error al obtener las ofertas de trabajo:", error);
+            res.status(500).json({ error: "Error al obtener las ofertas de trabajo." });
+          }
+        });
+
+
 // Escuchar en el puerto correcto
 app.listen(3001, () => {
   console.log("Servidor iniciado en el puerto 3001");
 });
+
